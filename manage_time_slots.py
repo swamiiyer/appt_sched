@@ -30,12 +30,14 @@ def main(args):
             print(datestr)
             for start, end, available in slots[date]:
                 if available:
-                    print("  %s - %s (*)" %(start, end))
+                    print("\033[92m  %s - %s\033[0m" %(start, end))
                 else:
-                    print("  %s - %s" %(start, end))
+                    print("\033[91m  %s - %s\033[0m" %(start, end))
     else:
         lines = sys.stdin.readlines()
         for i, line in enumerate(lines):
+            if line == "":
+                continue
             date, start, end, command = line.strip().split()
             if command == "+":
                 cur.execute("""INSERT IGNORE INTO TimeSlot 
@@ -44,8 +46,6 @@ def main(args):
                 cur.execute("""DELETE FROM TimeSlot 
                 WHERE date = %s AND start = %s AND end = %s""",
                             (date, start, end))
-            else:
-                print("Error: invalid command %s on line %d" % (command, i + 1))
         conn.commit()
     conn.close()
 

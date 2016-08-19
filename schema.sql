@@ -1,4 +1,4 @@
-DROP TABLE if exists TimeSlot;
+DROP TABLE IF EXISTS TimeSlot;
 
 CREATE TABLE TimeSlot (
     date CHAR(10), 

@@ -1,4 +1,4 @@
-import argparse, datetime, json, MySQLdb, oauth2client, operator, os, pickle, requests, smtplib, sys
+import argparse, datetime, json, MySQLdb, oauth2client, operator, os, pytz, requests, smtplib, sys
 
 from apiclient.discovery import build
 from httplib2 import Http
@@ -71,6 +71,7 @@ def index():
     """
 
     status = ("SUCCESS", "")
+    name, email, appt_type, appt_time, description = "", "", "", "", ""
     slots = {}
     now = datetime.datetime.now()
     nowdatestr = "%04d-%02d-%02d" %(now.year, now.month, now.day)
@@ -89,44 +90,118 @@ def index():
         name = request.form.get("name")
         email = request.form.get("email")
         appt_type = request.form.get("type")
-        appt_time = request.form.getlist("time")
+        appt_time = request.form.get("time")
         description = request.form.get("description")
-        print name, email, appt_type, appt_time, description
-        if name == "" or email == "" or appt_type == "" or len(appt_time) == 0:
-            status = ("ERROR", "Required field(s) missing!")
+        if name == "" or email == "" or appt_type == "" or appt_time == "" or \
+           description == "":
+            status = ("ERROR", "Missing some information!")
         elif not recaptcha.verify():
-            status = ("ERROR", "You are a robot!")
+            status = ("ERROR", "Failed robot (aka Turing) test!")
         else:
             credentials = get_credentials()
             http = credentials.authorize(Http())
             service = build('calendar', 'v3', http = http)
-            for time in appt_time:
-                a, b, c = time.split()
-                event = {
-                    'summary' : '%s appointment with %s' %(appt_type, name),
-                    'description' : description,
-                    'start' : {
-                        'dateTime' : '%sT%s:00-04:00' %(a, b)
-                    },
-                    'end' : {
-                        'dateTime' : '%sT%s:00-04:00' %(a, c)
-                    },
-                }
-                event = service.events().insert(calendarId =
-                                                params["CALENDAR_ID"],
-                                                body = event).execute()
-                cur.execute("""UPDATE TimeSlot SET available = 0 
-                WHERE date = %s AND start = %s AND end = %s""", (a, b, c))
-                status = ("SUCCESS", "Appointment scheduled successfully and email confirmation sent!")
-                g.conn.commit()
-                return render_template("index2.html", 
-                                       params = params,
-                                       slots = slots,
-                                       status = status)
+            local = pytz.timezone(params["TZ"])
+            a, b, c = appt_time.split()
+            start = datetime.datetime.strptime("%s %s" %(a, b),
+                                               "%Y-%m-%d %H:%M")
+            startutc = local.localize(start).isoformat()
+            end = datetime.datetime.strptime("%s %s" %(a, c),
+                                             "%Y-%m-%d %H:%M")
+            endutc = local.localize(end).isoformat()
+            event = {
+                'summary' : 'Meet %s (Appt. Type: %s)' %(name, appt_type),
+                'description' : description,
+                'start' : {
+                    'dateTime' : startutc
+                },
+                'end' : {
+                    'dateTime' : endutc
+                },
+            }
+            event = service.events().insert(calendarId =
+                                            params["CALENDAR_ID"],
+                                            body = event).execute()
+            cur.execute("""UPDATE TimeSlot SET available = 0 
+            WHERE date = %s AND start = %s AND end = %s""", (a, b, c))
+            status = ("SUCCESS", "Appointment scheduled successfully and email confirmation sent!")
+            g.conn.commit()
+            event_id = event.get("id")
+            link = "%s/cancel/?date=%s&start=%s&end=%s&event_id=%s" \
+                   %(params["URL"], a, b, c, event_id)
+            msg = MIMEText("""Dear %s,
+            
+This is to confirm that you have scheduled the following appointment with me:
+
+~~~
+Type: %s
+Time: %s
+Description: %s 
+~~~
+
+To cancel the appointment, please click on the following link or copy and 
+paste it into your browser's address bar.
+
+%s
+
+Best,
+
+%s
+            """ %(name, appt_type, appt_time, description,
+                  link, params["ADMIN_NAME"]))
+            msg["Subject"] = "Appointment confirmation"
+            msg["From"] = params["ADMIN_EMAIL"]
+            msg["To"] = email
+            msg["Cc"] = params["ADMIN_EMAIL"]
+            s = smtplib.SMTP(params["SMTP_ADDR"])
+            s.sendmail(params["ADMIN_EMAIL"], [email, params["ADMIN_EMAIL"]],
+                                               msg.as_string())
+            s.quit()
+            return render_template("success.html", 
+                                   params = params,
+                                   status = status)
     return render_template("index.html", 
                            params = params,
                            slots = slots,
+                           name = name,
+                           email = email,
+                           appt_type = appt_type,
+                           appt_time = appt_time,
+                           description = description,
                            status = status)
+
+@app.route("/cancel/", methods = ["GET", "POST"])
+def cancel():
+    """
+    """
+
+    status = ("SUCCESS", "")
+    if request.method == "GET":
+        cur = g.conn.cursor()
+        date = request.args.get('date')
+        start = request.args.get('start')
+        end = request.args.get('end')
+        event_id = request.args.get('event_id')
+        credentials = get_credentials()
+        http = credentials.authorize(Http())
+        service = build('calendar', 'v3', http = http)
+        cur.execute("""SELECT count(*) FROM TimeSlot 
+            WHERE date = %s AND start = %s AND end = %s""", (date, start, end))
+        count = int(cur.fetchone()[0])
+        res = service.events().get(calendarId = params["CALENDAR_ID"],
+                                   eventId = event_id).execute()
+        if count == 0 or res["summary"] == "":
+            status = ("ERROR", "Malformed URL, could not cancel appointment!")
+        else:
+            res = service.events().delete(calendarId = params["CALENDAR_ID"],
+                                          eventId = event_id).execute()
+            cur.execute("""UPDATE TimeSlot SET available = 1 
+            WHERE date = %s AND start = %s AND end = %s""", (date, start, end))
+            g.conn.commit()
+            status = ("SUCCESS", "Your appointment has been cancelled!")
+        return render_template("success.html", 
+                               params = params,
+                               status = status)
 
 if __name__ == "__main__":
     app.run(debug = True)

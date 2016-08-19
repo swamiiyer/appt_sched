@@ -1,0 +1,14 @@
+{
+    "URL"            : "...",
+    "ADMIN_NAME"     : "...",
+    "ADMIN_EMAIL"    : "...",
+    "SMTP_ADDR"      : "...",
+    "APPT_TYPES"     : ["...", "...", "...", ...],
+    "CALENDAR_ID"    : "...",
+    "TZ"             : "...",
+    "MAX_DAYS"       : ...,
+    "DB_USER"        : "...",
+    "DB_NAME"        : "...",
+    "RC_SITE_KEY"    : "...",
+    "RC_SECRET_KEY"  : "..."
+}
