@@ -1,0 +1,9 @@
+{% extends "layout.html" %}
+{% block body %}
+{% if status[0] == "SUCCESS" %}
+<div class="alert alert-success" role="alert">{{ status[1] }}</div>
+{% endif %}
+{% if status[0] == "ERROR" %}
+<div class="alert alert-danger" role="alert">{{ status[1] }}</div>
+{% endif %}
+{% endblock %}
