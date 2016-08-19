@@ -157,7 +157,7 @@ Best,
             s.sendmail(params["ADMIN_EMAIL"], [email, params["ADMIN_EMAIL"]],
                                                msg.as_string())
             s.quit()
-            return render_template("success.html", 
+            return render_template("response.html", 
                                    params = params,
                                    status = status)
     return render_template("index.html", 
@@ -199,7 +199,7 @@ def cancel():
             WHERE date = %s AND start = %s AND end = %s""", (date, start, end))
             g.conn.commit()
             status = ("SUCCESS", "Your appointment has been cancelled!")
-        return render_template("success.html", 
+        return render_template("response.html", 
                                params = params,
                                status = status)
 
